@@ -70,14 +70,34 @@ error_code cellHttpUtilParseUri(vm::ptr<CellHttpUri> uri, vm::cptr<char> str, vm
 		u32 passwordOffset = usernameOffset + ::size32(username) + 1;
 		u32 totalSize = passwordOffset + ::size32(password) + 1;
 
-		//called twice, first to setup pool, then to populate.
-		if (!uri)
+		int port = 80;
+
+		if (!URL.m_Port.empty() && !URL.GetPort(&port))
 		{
+			// Non-numeric or out of range (atoi-based GetPort rejects <= 0 and > 65535)
+			cellHttpUtil.error("cellHttpUtilParseUri(): invalid port '%s'", URL.m_Port);
+			return CELL_HTTP_UTIL_ERROR_INVALID_URI;
+		}
+
+		//called twice, first to setup pool, then to populate.
+		if (!uri || !pool)
+		{
+			// Size query only: nothing to write to (the check above guarantees "required" is set here)
 			*required = totalSize;
 			return CELL_OK;
 		}
 		else
 		{
+			if (size < totalSize)
+			{
+				if (required)
+				{
+					*required = totalSize;
+				}
+
+				return CELL_HTTP_UTIL_ERROR_INSUFFICIENT;
+			}
+
 			std::memcpy(vm::base(pool.addr() + schemeOffset), scheme.c_str(), scheme.length() + 1);
 			std::memcpy(vm::base(pool.addr() + hostOffset), host.c_str(), host.length() + 1);
 			std::memcpy(vm::base(pool.addr() + pathOffset), path.c_str(), path.length() + 1);
@@ -90,15 +110,7 @@ error_code cellHttpUtilParseUri(vm::ptr<CellHttpUri> uri, vm::cptr<char> str, vm
 			uri->username.set(pool.addr() + usernameOffset);
 			uri->password.set(pool.addr() + passwordOffset);
 
-			if (!URL.m_Port.empty())
-			{
-				int port = stoi(URL.m_Port);
-				uri->port = port;
-			}
-			else
-			{
-				uri->port = 80;
-			}
+			uri->port = port;
 			return CELL_OK;
 		}
 	}
@@ -136,7 +148,7 @@ error_code cellHttpUtilParseUri(vm::ptr<CellHttpUri> uri, vm::cptr<char> str, vm
 				break;
 		}
 		cellHttpUtil.error("%s, while parsing URI, %s.", parseError, str.get_ptr());
-		return -1;
+		return CELL_HTTP_UTIL_ERROR_INVALID_URI;
 	}
 }
 

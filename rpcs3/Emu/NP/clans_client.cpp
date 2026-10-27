@@ -1,5 +1,6 @@
 #include "stdafx.h"
 
+#include <charconv>
 #include <string_view>
 #include <util/types.hpp>
 
@@ -309,7 +310,21 @@ namespace clan
 
 		const std::string result_str = result.as_string();
 		if (result_str != "00")
-			return static_cast<SceNpClansError>(0x80022800 | std::stoul(result_str, nullptr, 16));
+		{
+			// The value comes from the server: do not throw on malformed input
+			u32 result_code = 0;
+			const char* const begin = result_str.data();
+			const char* const end = begin + result_str.size();
+			const auto [ptr, ec] = std::from_chars(begin, end, result_code, 16);
+
+			if (ec != std::errc() || ptr != end)
+			{
+				clan_log.error("Malformed clan result code in server response: '%s'", result_str);
+				return SCE_NP_CLANS_ERROR_BAD_RESPONSE;
+			}
+
+			return static_cast<SceNpClansError>(0x80022800 | result_code);
+		}
 
 		return SCE_NP_CLANS_SUCCESS;
 	}

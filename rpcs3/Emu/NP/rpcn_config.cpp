@@ -2,6 +2,8 @@
 #include "rpcn_config.h"
 #include "Utilities/File.h"
 
+#include <charconv>
+
 cfg_rpcn g_cfg_rpcn;
 
 LOG_CHANNEL(rpcn_log, "rpcn");
@@ -230,12 +232,19 @@ std::optional<std::pair<std::string, u16>> parse_rpcn_host(std::string_view host
 
 	if (splithost.size() == 2)
 	{
-		port = ::narrow<u16>(std::stoul(splithost[1]));
-		if (port == 0)
+		// User-provided text: avoid std::stoul/::narrow which throw on non-numeric or out of range input
+		u32 parsed_port = 0;
+		const char* const begin = splithost[1].data();
+		const char* const end = begin + splithost[1].size();
+		const auto [ptr, ec] = std::from_chars(begin, end, parsed_port, 10);
+
+		if (ec != std::errc() || ptr != end || parsed_port == 0 || parsed_port > 0xFFFF)
 		{
 			rpcn_log.error("RPCN port is invalid!");
 			return std::nullopt;
 		}
+
+		port = static_cast<u16>(parsed_port);
 	}
 
 	return std::make_pair(std::move(splithost[0]), port);
